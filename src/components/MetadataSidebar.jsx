@@ -1,6 +1,8 @@
-import { ChevronUp, ChevronDown, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronUp, ChevronDown, X, MapPin } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { MapUpdater } from './MapUpdater.jsx';
+import { reverseGeocode } from '../utils/geocodingUtils.js';
 
 export const MetadataSidebar = ({ 
   images, 
@@ -12,6 +14,25 @@ export const MetadataSidebar = ({
   isMobile = false,
   onClose
 }) => {
+  const [address, setAddress] = useState(null);
+  const [isLoadingAddress, setIsLoadingAddress] = useState(false);
+
+  // GPS 좌표가 변경될 때마다 주소 조회
+  useEffect(() => {
+    const fetchAddress = async () => {
+      if (formattedMetadata.gpsCoords) {
+        setIsLoadingAddress(true);
+        const { lat, lon } = formattedMetadata.gpsCoords;
+        const result = await reverseGeocode(lat, lon);
+        setAddress(result);
+        setIsLoadingAddress(false);
+      } else {
+        setAddress(null);
+      }
+    };
+
+    fetchAddress();
+  }, [formattedMetadata.gpsCoords?.lat, formattedMetadata.gpsCoords?.lon]);
   return (
     <aside className={`${isMobile ? 'relative w-full' : 'fixed left-0 top-16 bottom-0 w-64'} bg-black border-r border-gray-800 flex flex-col z-40 overflow-y-auto`}>
       {/* 모바일 닫기 버튼 */}
@@ -84,8 +105,17 @@ export const MetadataSidebar = ({
             
             {formattedMetadata.gps && (
               <div>
-                <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">LAT. LONG</p>
-                <p className="text-white mb-4">{formattedMetadata.gps}</p>
+                <p className="text-xs text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <MapPin className="w-3 h-3" />
+                  LOCATION
+                </p>
+                {isLoadingAddress ? (
+                  <p className="text-gray-500 text-sm mb-4">주소 조회 중...</p>
+                ) : address ? (
+                  <p className="text-white mb-4 text-sm leading-relaxed">{address}</p>
+                ) : (
+                  <p className="text-white mb-4">{formattedMetadata.gps}</p>
+                )}
                 
                 {/* 지도 표시 */}
                 {formattedMetadata.gpsCoords && (
