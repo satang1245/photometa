@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCcw, Move, Download } from 'lucide-react';
 import { formatMetadata } from '../utils/metadataUtils.js';
 
-export const BoardMode = ({ images, onClose, onImageClick }) => {
+export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [], onPhotoLayoutsChange }) => {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [loadedImages, setLoadedImages] = useState([]);
@@ -16,8 +16,8 @@ export const BoardMode = ({ images, onClose, onImageClick }) => {
   const [hoveredIndex, setHoveredIndex] = useState(-1);
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   
-  // 이미지 배치 정보 저장
-  const [photoLayouts, setPhotoLayouts] = useState([]);
+  // 이미지 배치 정보 저장 (상위 컴포넌트에서 관리하는 위치 정보 사용)
+  const [photoLayouts, setPhotoLayouts] = useState(savedPhotoLayouts);
   
   // 처음 진입 시 안내 메시지 표시
   const [showWelcomeMessage, setShowWelcomeMessage] = useState(true);
@@ -64,6 +64,32 @@ export const BoardMode = ({ images, onClose, onImageClick }) => {
   useEffect(() => {
     if (loadedImages.length === 0 || !containerRef.current) return;
     
+    // 저장된 레이아웃이 있고 이미지 개수가 같으면 기존 위치 사용
+    if (savedPhotoLayouts.length > 0 && savedPhotoLayouts.length === loadedImages.length) {
+      // 이미지 ID로 매칭하여 기존 레이아웃 재사용
+      const matchedLayouts = loadedImages.map((img) => {
+        const savedLayout = savedPhotoLayouts.find(layout => layout.image?.id === img.id);
+        if (savedLayout) {
+          // 기존 레이아웃을 사용하되, image 객체만 업데이트
+          return {
+            ...savedLayout,
+            image: img
+          };
+        }
+        return null;
+      }).filter(Boolean);
+      
+      // 모든 이미지가 매칭되면 기존 레이아웃 사용
+      if (matchedLayouts.length === loadedImages.length) {
+        setPhotoLayouts(matchedLayouts);
+        if (onPhotoLayoutsChange) {
+          onPhotoLayoutsChange(matchedLayouts);
+        }
+        return;
+      }
+    }
+    
+    // 새로 레이아웃 생성
     const containerWidth = containerRef.current.clientWidth;
     const containerHeight = containerRef.current.clientHeight;
     
@@ -127,12 +153,16 @@ export const BoardMode = ({ images, onClose, onImageClick }) => {
     });
     
     setPhotoLayouts(layouts);
+    if (onPhotoLayoutsChange) {
+      onPhotoLayoutsChange(layouts);
+    }
     
     // 초기 오프셋 설정 (중앙에서 시작)
     setOffset({
       x: (containerWidth - boardWidth) / 2,
       y: (containerHeight - boardHeight) / 2
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedImages]);
 
   // 캔버스 그리기
@@ -424,6 +454,10 @@ export const BoardMode = ({ images, onClose, onImageClick }) => {
           x: newX,
           y: newY
         };
+        // 상위 컴포넌트에 변경 사항 알림
+        if (onPhotoLayoutsChange) {
+          onPhotoLayoutsChange(updated);
+        }
         return updated;
       });
       

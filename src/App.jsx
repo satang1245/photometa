@@ -38,6 +38,7 @@ function App() {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [isBoardMode, setIsBoardMode] = useState(false);
+  const [boardPhotoLayouts, setBoardPhotoLayouts] = useState([]);
 
   const selectedImage = images.find(img => img.id === selectedImageId) || images[currentIndex] || null;
 
@@ -369,7 +370,16 @@ function App() {
             {images.length > 0 && (
               <>
                 <button
-                  onClick={() => setIsBoardMode(true)}
+                  onClick={() => {
+                    // 보드판 모드로 전환 시 지도 모드 비활성화
+                    if (isMapMode) {
+                      resetCarMarker();
+                      setIsRoutePlaying(false);
+                      setCurrentRouteIndex(0);
+                      setIsMapMode(false);
+                    }
+                    setIsBoardMode(true);
+                  }}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg transition-colors hover:bg-gray-800 text-gray-300"
                 >
                   <LayoutGrid className="w-4 h-4" />
@@ -503,6 +513,8 @@ function App() {
           images={images}
           onClose={() => setIsBoardMode(false)}
           onImageClick={handleThumbnailClick}
+          savedPhotoLayouts={boardPhotoLayouts}
+          onPhotoLayoutsChange={setBoardPhotoLayouts}
         />
       )}
     </div>
