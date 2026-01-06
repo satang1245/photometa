@@ -311,7 +311,7 @@ function App() {
         return;
       }
       resetCarMarker();
-      setAutoZoomEnabled(true); // 동선 시작 시 자동 줌 활성화
+      // autoZoomEnabled는 사용자가 설정한 값 유지 (자동으로 true로 설정하지 않음)
       setIsRoutePlaying(true);
       setCurrentRouteIndex(0);
     }
@@ -463,6 +463,7 @@ function App() {
             onThumbnailClick={handleThumbnailClick}
             onCloseMapMode={() => setIsMapMode(false)}
             autoZoomEnabled={autoZoomEnabled}
+            onAutoZoomToggle={() => setAutoZoomEnabled(prev => !prev)}
             onAutoZoomDisabled={() => setAutoZoomEnabled(false)}
           />
         ) : (

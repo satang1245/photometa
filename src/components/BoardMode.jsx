@@ -19,6 +19,9 @@ export const BoardMode = ({ images, onClose, onImageClick }) => {
   // 이미지 배치 정보 저장
   const [photoLayouts, setPhotoLayouts] = useState([]);
   
+  // 처음 진입 시 안내 메시지 표시
+  const [showWelcomeMessage, setShowWelcomeMessage] = useState(true);
+  
   // 클릭 vs 드래그 구분을 위한 ref
   const mouseDownPos = useRef({ x: 0, y: 0 });
   const wasDragged = useRef(false);
@@ -308,6 +311,16 @@ export const BoardMode = ({ images, onClose, onImageClick }) => {
       }
     };
   }, []);
+
+  // 처음 진입 시 안내 메시지 3초 후 자동으로 사라지기
+  useEffect(() => {
+    if (showWelcomeMessage) {
+      const timer = setTimeout(() => {
+        setShowWelcomeMessage(false);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showWelcomeMessage]);
 
   // 사진 위에 마우스가 있는지 확인하는 함수
   const getPhotoAtPosition = useCallback((mouseX, mouseY) => {
@@ -794,6 +807,17 @@ export const BoardMode = ({ images, onClose, onImageClick }) => {
                 다운로드
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 처음 진입 시 안내 메시지 */}
+      {showWelcomeMessage && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none">
+          <div className="bg-black/70 backdrop-blur-sm rounded-2xl px-8 py-6 shadow-2xl">
+            <p className="text-white text-lg text-center whitespace-nowrap">
+              사진을 움직여 보드판을 완성 후 하단 다운로드 해보세요
+            </p>
           </div>
         </div>
       )}

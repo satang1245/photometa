@@ -29,12 +29,8 @@ export const MapBoundsUpdater = ({ currentPosition, nextPosition, enabled }) => 
     
     if (!currentPosition) return;
 
-    // 다음 위치가 없으면 현재 줌 유지하면서 마커만 따라감
+    // 다음 위치가 없으면 (마지막 위치) 아무것도 하지 않음
     if (!nextPosition) {
-      map.setView(currentPosition, map.getZoom(), {
-        animate: true,
-        duration: 0.5,
-      });
       return;
     }
 

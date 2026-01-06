@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import * as React from 'react'
 import type { ChangeEvent } from 'react'
 import ExifReader from 'exifreader'
-import { Upload, X, ChevronUp, ChevronDown, Map } from 'lucide-react'
+import html2canvas from 'html2canvas'
+import { Upload, X, ChevronUp, ChevronDown, Map, Download } from 'lucide-react'
 import { MapContainer, TileLayer, Marker, Popup, useMap, Tooltip, Polyline } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -68,6 +69,7 @@ function App() {
   const [isMapMode, setIsMapMode] = useState(false);
   const [isRoutePlaying, setIsRoutePlaying] = useState(false);
   const [currentRouteIndex, setCurrentRouteIndex] = useState<number>(0);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
 
   const selectedImage = images.find(img => img.id === selectedImageId) || images[currentIndex] || null;
 
@@ -768,6 +770,40 @@ function App() {
     }
   }, [isRoutePlaying, currentRouteIndex, sortedRoute.length]);
 
+  // 지도 다운로드 함수
+  const handleMapDownload = async () => {
+    if (!mapContainerRef.current) return;
+    
+    try {
+      // 지도 컨테이너만 캡처 (상단 헤더와 왼쪽 사이드바 제외)
+      const canvas = await html2canvas(mapContainerRef.current, {
+        backgroundColor: null,
+        useCORS: true,
+        scale: 1,
+        logging: false,
+        windowWidth: mapContainerRef.current.scrollWidth,
+        windowHeight: mapContainerRef.current.scrollHeight,
+      });
+      
+      // 캔버스를 이미지로 변환
+      const dataUrl = canvas.toDataURL('image/png');
+      
+      // 다운로드 링크 생성
+      const link = document.createElement('a');
+      const fileName = `map-${new Date().toISOString().slice(0, 10)}.png`;
+      link.download = fileName;
+      link.href = dataUrl;
+      
+      // 다운로드 실행
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error('지도 다운로드 중 오류 발생:', error);
+      alert('지도 다운로드 중 오류가 발생했습니다.');
+    }
+  };
+
   return (
     <div className="flex h-screen bg-black overflow-hidden font-sans text-white">
       {/* 상단 헤더 */}
@@ -974,12 +1010,20 @@ function App() {
             </label>
           </div>
         ) : isMapMode && mapBounds ? (
-          <div className="h-full w-full relative">
-            {/* 동선 버튼 */}
-            <div className="absolute top-4 right-4 z-[1000] flex gap-2">
+          <div ref={mapContainerRef} className="h-full w-full relative">
+            {/* 동선 버튼 및 다운로드 버튼 */}
+            <div className="absolute top-4 right-4 z-[9999] flex gap-2 pointer-events-auto">
+              <button
+                onClick={handleMapDownload}
+                className="px-4 py-2 rounded-lg transition-colors flex items-center gap-2 bg-black/80 backdrop-blur-sm text-white hover:bg-black/90 shadow-lg border border-white/20"
+                title="지도 다운로드"
+              >
+                <Download className="w-4 h-4" />
+                <span>다운로드</span>
+              </button>
               <button
                 onClick={handleRouteAnimation}
-                className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-lg ${
                   isRoutePlaying
                     ? 'bg-red-600 text-white hover:bg-red-700'
                     : 'bg-blue-600 text-white hover:bg-blue-700'
