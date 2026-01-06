@@ -190,21 +190,21 @@ export const MapMode = ({
   };
 
   return (
-    <div ref={mapContainerRef} className="h-full w-full relative">
-      {/* 동선 버튼 및 다운로드 버튼 */}
-      <div className="absolute top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-auto">
-        <div className="flex gap-2">
+    <div ref={mapContainerRef} className="h-full w-full relative touch-auto">
+      {/* 동선 버튼 및 다운로드 버튼 - 모바일에서는 상단에 안전하게 표시 (Leaflet z-index가 400대) */}
+      <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-[500] flex flex-col gap-2 pointer-events-auto safe-area-top">
+        <div className="flex gap-1.5 sm:gap-2">
           <button
             onClick={handleMapDownload}
-            className="px-4 py-2 rounded-lg transition-colors flex items-center gap-2 bg-black/80 backdrop-blur-sm text-white hover:bg-black/90 shadow-lg border border-white/20"
+            className="px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 bg-black/80 backdrop-blur-sm text-white hover:bg-black/90 shadow-lg border border-white/20"
             title="지도 다운로드"
           >
             <Download className="w-4 h-4" />
-            <span>다운로드</span>
+            <span className="hidden sm:inline text-sm">다운로드</span>
           </button>
           <button
             onClick={onRouteAnimation}
-            className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 shadow-lg ${
+            className={`px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 shadow-lg ${
               isRoutePlaying
                 ? 'bg-red-600 text-white hover:bg-red-700'
                 : 'bg-blue-600 text-white hover:bg-blue-700'
@@ -213,25 +213,25 @@ export const MapMode = ({
             {isRoutePlaying ? (
               <>
                 <span>⏸</span>
-                <span>동선 중지</span>
+                <span className="hidden sm:inline text-sm">동선 중지</span>
               </>
             ) : (
               <>
                 <span>▶</span>
-                <span>동선</span>
+                <span className="hidden sm:inline text-sm">동선</span>
               </>
             )}
           </button>
         </div>
-        {/* 자동 확대/축소 옵션 */}
-        <label className="flex items-center gap-2 px-4 py-2 rounded-lg bg-black/80 backdrop-blur-sm text-white shadow-lg border border-white/20 cursor-pointer hover:bg-black/90 transition-colors">
+        {/* 자동 확대/축소 옵션 - 모바일에서는 더 간단하게 */}
+        <label className="flex items-center gap-2 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-lg bg-black/80 backdrop-blur-sm text-white shadow-lg border border-white/20 cursor-pointer hover:bg-black/90 transition-colors">
           <input
             type="checkbox"
             checked={autoZoomEnabled}
             onChange={onAutoZoomToggle}
             className="w-4 h-4 rounded cursor-pointer"
           />
-          <span className="text-sm">마커 위치에 따라 자동 확대</span>
+          <span className="text-xs sm:text-sm">자동 확대</span>
         </label>
       </div>
       <MapContainer
@@ -357,16 +357,16 @@ export const MapMode = ({
       {/* 동선 진행 프로그래스바 */}
       {isRoutePlaying && sortedRoute.length > 0 && (
         <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-black/90 backdrop-blur-sm border-t border-gray-800">
-          <div className="px-8 py-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm text-gray-300">
-                동선 진행 중... ({currentRouteIndex + 1} / {sortedRoute.length})
+          <div className="px-4 py-2 sm:px-8 sm:py-4">
+            <div className="flex items-center justify-between mb-1 sm:mb-2">
+              <span className="text-xs sm:text-sm text-gray-300">
+                동선 ({currentRouteIndex + 1} / {sortedRoute.length})
               </span>
-              <span className="text-sm text-gray-400">
+              <span className="text-xs sm:text-sm text-gray-400">
                 {Math.round(((currentRouteIndex + 1) / sortedRoute.length) * 100)}%
               </span>
             </div>
-            <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-gray-800 rounded-full h-1.5 sm:h-2 overflow-hidden">
               <div 
                 className="bg-green-500 h-full rounded-full transition-all duration-300 ease-out"
                 style={{ width: `${((currentRouteIndex + 1) / sortedRoute.length) * 100}%` }}

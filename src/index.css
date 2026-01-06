@@ -12,9 +12,41 @@ body {
   min-height: 100vh;
   background-color: #000000;
   color: #ffffff;
+  /* 모바일 터치 최적화 */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
 }
 
 #root {
   height: 100vh;
+  height: 100dvh; /* 동적 viewport height - 모바일 주소표시줄 고려 */
   background-color: #000000;
+}
+
+/* 모바일 터치 최적화 */
+@media (max-width: 768px) {
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* 모바일에서 버튼 터치 시 하이라이트 개선 */
+  button, label {
+    touch-action: manipulation;
+  }
+  
+  /* 모바일에서 이미지 드래그 방지 */
+  img {
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+}
+
+/* Safe area 지원 (노치, 다이나믹 아일랜드 등) */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }

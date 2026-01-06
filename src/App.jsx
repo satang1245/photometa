@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import ExifReader from 'exifreader';
-import { Upload, Map, LayoutGrid } from 'lucide-react';
+import { Upload, Map, LayoutGrid, Menu, X } from 'lucide-react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './App.css';
@@ -39,6 +39,9 @@ function App() {
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [isBoardMode, setIsBoardMode] = useState(false);
   const [boardPhotoLayouts, setBoardPhotoLayouts] = useState([]);
+  const [boardViewState, setBoardViewState] = useState({ scale: 1, offset: null });
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   const selectedImage = images.find(img => img.id === selectedImageId) || images[currentIndex] || null;
 
@@ -339,25 +342,35 @@ function App() {
   return (
     <div className="flex h-screen bg-black overflow-hidden font-sans text-white">
       {/* 상단 헤더 */}
-      <header className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-sm border-b border-gray-800">
-        <div className="flex items-center justify-between px-8 py-4">
-          <div className="flex items-center gap-4">
-            <div className="w-3 h-3 rounded-full bg-red-500"></div>
-            <span className="text-sm font-light">photo metadata viewer</span>
+      <header className="fixed top-0 left-0 right-0 z-[600] bg-black/80 backdrop-blur-sm border-b border-gray-800">
+        <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4">
+          <div className="flex items-center gap-3 md:gap-4">
+            {/* 모바일 메타데이터 사이드바 토글 버튼 */}
+            {images.length > 0 && (
+              <button
+                onClick={() => setIsMobileSidebarOpen(!isMobileSidebarOpen)}
+                className="md:hidden p-2 -ml-2 hover:bg-gray-800 rounded-lg transition-colors"
+                aria-label="메타데이터 보기"
+              >
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
+            <div className="w-2.5 h-2.5 md:w-3 md:h-3 rounded-full bg-red-500"></div>
+            <span className="text-xs md:text-sm font-light">photo metadata viewer</span>
           </div>
           {/* 로딩바 */}
           {isUploading && (
             <div className="absolute top-full left-0 right-0 bg-gray-900/90 backdrop-blur-sm border-b border-gray-800">
-              <div className="px-8 py-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm text-gray-300">
-                    사진 업로드 중... ({uploadProgress.current} / {uploadProgress.total})
+              <div className="px-4 md:px-8 py-2 md:py-3">
+                <div className="flex items-center justify-between mb-1 md:mb-2">
+                  <span className="text-xs md:text-sm text-gray-300">
+                    업로드 중... ({uploadProgress.current} / {uploadProgress.total})
                   </span>
-                  <span className="text-sm text-gray-400">
+                  <span className="text-xs md:text-sm text-gray-400">
                     {Math.round((uploadProgress.current / uploadProgress.total) * 100)}%
                   </span>
                 </div>
-                <div className="w-full bg-gray-800 rounded-full h-2 overflow-hidden">
+                <div className="w-full bg-gray-800 rounded-full h-1.5 md:h-2 overflow-hidden">
                   <div 
                     className="bg-blue-500 h-full rounded-full transition-all duration-300 ease-out"
                     style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }}
@@ -366,12 +379,13 @@ function App() {
               </div>
             </div>
           )}
-          <div className="flex items-center gap-6">
+          
+          {/* 데스크톱 메뉴 */}
+          <div className="hidden md:flex items-center gap-6">
             {images.length > 0 && (
               <>
                 <button
                   onClick={() => {
-                    // 보드판 모드로 전환 시 지도 모드 비활성화
                     if (isMapMode) {
                       resetCarMarker();
                       setIsRoutePlaying(false);
@@ -429,22 +443,128 @@ function App() {
               />
             </label>
           </div>
+
+          {/* 모바일 메뉴 버튼 */}
+          <div className="flex md:hidden items-center gap-2">
+            <label className="cursor-pointer p-2 hover:bg-gray-800 rounded-lg transition-colors">
+              <Upload className="w-5 h-5" />
+              <input 
+                type="file" 
+                className="hidden" 
+                accept="image/*" 
+                multiple 
+                onChange={handleImageUpload} 
+              />
+            </label>
+            {images.length > 0 && (
+              <button
+                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                aria-label="메뉴"
+              >
+                {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* 모바일 드롭다운 메뉴 */}
+        {isMobileMenuOpen && images.length > 0 && (
+          <div className="md:hidden bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
+            <div className="px-4 py-3 space-y-2">
+              <button
+                onClick={() => {
+                  if (isMapMode) {
+                    resetCarMarker();
+                    setIsRoutePlaying(false);
+                    setCurrentRouteIndex(0);
+                    setIsMapMode(false);
+                  }
+                  setIsBoardMode(true);
+                  setIsMobileMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors hover:bg-gray-800 text-gray-300"
+              >
+                <LayoutGrid className="w-5 h-5" />
+                <span>보드판으로 보기</span>
+              </button>
+              <button
+                onClick={() => {
+                  if (gpsLocations.length === 0) {
+                    alert('GPS 정보가 있는 사진이 없습니다.');
+                    return;
+                  }
+                  if (isMapMode) {
+                    resetCarMarker();
+                    setIsRoutePlaying(false);
+                    setCurrentRouteIndex(0);
+                  }
+                  setIsMapMode(!isMapMode);
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                  isMapMode 
+                    ? 'bg-blue-600 text-white' 
+                    : gpsLocations.length > 0
+                    ? 'hover:bg-gray-800 text-gray-300'
+                    : 'opacity-50 text-gray-500'
+                }`}
+                disabled={gpsLocations.length === 0}
+              >
+                <Map className="w-5 h-5" />
+                <span>지도 모드</span>
+                {gpsLocations.length > 0 && (
+                  <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded ml-auto">
+                    {gpsLocations.length}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
       </header>
 
-      {/* 왼쪽 사이드바 (메타데이터) */}
-      <MetadataSidebar
-        images={images}
-        currentIndex={currentIndex}
-        selectedImage={selectedImage}
-        formattedMetadata={formattedMetadata}
-        selectedImageId={selectedImageId}
-        onNavigateImage={navigateImage}
-      />
+      {/* 왼쪽 사이드바 (메타데이터) - 데스크톱 */}
+      <div className="hidden md:block">
+        <MetadataSidebar
+          images={images}
+          currentIndex={currentIndex}
+          selectedImage={selectedImage}
+          formattedMetadata={formattedMetadata}
+          selectedImageId={selectedImageId}
+          onNavigateImage={navigateImage}
+        />
+      </div>
+
+      {/* 모바일 사이드바 오버레이 */}
+      {isMobileSidebarOpen && (
+        <div 
+          className="md:hidden fixed inset-0 z-[510] bg-black/50"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        >
+          <div 
+            className="absolute left-0 top-0 bottom-0 w-72 bg-black border-r border-gray-800 overflow-y-auto z-[461]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="pt-16">
+              <MetadataSidebar
+                images={images}
+                currentIndex={currentIndex}
+                selectedImage={selectedImage}
+                formattedMetadata={formattedMetadata}
+                selectedImageId={selectedImageId}
+                onNavigateImage={navigateImage}
+                isMobile={true}
+                onClose={() => setIsMobileSidebarOpen(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 메인 콘텐츠 영역 */}
       <main 
-        className="flex-1 ml-64 pt-16 overflow-auto"
+        className="flex-1 ml-0 md:ml-64 pt-14 md:pt-16 overflow-auto"
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -477,13 +597,13 @@ function App() {
             onAutoZoomDisabled={() => setAutoZoomEnabled(false)}
           />
         ) : (
-          <div className={`p-8 min-h-full relative ${isDragging ? 'bg-blue-500/5' : ''}`}>
+          <div className={`p-4 md:p-8 min-h-full relative ${isDragging ? 'bg-blue-500/5' : ''}`}>
             {/* 드래그 오버 시 표시되는 오버레이 */}
             {isDragging && (
               <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center pointer-events-none">
-                <div className="bg-black/90 border-2 border-dashed border-blue-500 rounded-lg p-16">
-                  <Upload className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-                  <p className="text-blue-400 text-center text-xl">여기에 사진을 놓으세요</p>
+                <div className="bg-black/90 border-2 border-dashed border-blue-500 rounded-lg p-8 md:p-16">
+                  <Upload className="w-12 h-12 md:w-16 md:h-16 text-blue-500 mx-auto mb-4" />
+                  <p className="text-blue-400 text-center text-base md:text-xl">여기에 사진을 놓으세요</p>
                 </div>
               </div>
             )}
@@ -515,6 +635,8 @@ function App() {
           onImageClick={handleThumbnailClick}
           savedPhotoLayouts={boardPhotoLayouts}
           onPhotoLayoutsChange={setBoardPhotoLayouts}
+          savedViewState={boardViewState}
+          onViewStateChange={setBoardViewState}
         />
       )}
     </div>

@@ -2,12 +2,21 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCcw, Move, Download } from 'lucide-react';
 import { formatMetadata } from '../utils/metadataUtils.js';
 
-export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [], onPhotoLayoutsChange }) => {
+export const BoardMode = ({ 
+  images, 
+  onClose, 
+  onImageClick, 
+  savedPhotoLayouts = [], 
+  onPhotoLayoutsChange,
+  savedViewState = { scale: 1, offset: null },
+  onViewStateChange
+}) => {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const [loadedImages, setLoadedImages] = useState([]);
-  const [scale, setScale] = useState(1);
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [scale, setScale] = useState(savedViewState.scale || 1);
+  const [offset, setOffset] = useState(savedViewState.offset || { x: 0, y: 0 });
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isDraggingBoard, setIsDraggingBoard] = useState(false);
   const [isDraggingPhoto, setIsDraggingPhoto] = useState(false);
   const [draggingPhotoIndex, setDraggingPhotoIndex] = useState(-1);
@@ -31,6 +40,13 @@ export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [
   const lastMousePos = useRef({ x: 0, y: 0 });
   const lastMoveTime = useRef(Date.now());
   const animationFrameRef = useRef(null);
+  
+  // 터치 핀치 줌을 위한 ref
+  const lastTouchDistance = useRef(0);
+  const isTouchZooming = useRef(false);
+  const pinchCenter = useRef({ x: 0, y: 0 });
+  const pinchStartScale = useRef(1);
+  const pinchStartOffset = useRef({ x: 0, y: 0 });
 
   // 이미지 로드
   useEffect(() => {
@@ -157,11 +173,17 @@ export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [
       onPhotoLayoutsChange(layouts);
     }
     
-    // 초기 오프셋 설정 (중앙에서 시작)
-    setOffset({
-      x: (containerWidth - boardWidth) / 2,
-      y: (containerHeight - boardHeight) / 2
-    });
+    // 초기 오프셋 설정 - 저장된 상태가 있으면 사용, 없으면 중앙에서 시작
+    if (isInitialLoad && savedViewState.offset) {
+      setOffset(savedViewState.offset);
+      setScale(savedViewState.scale || 1);
+      setIsInitialLoad(false);
+    } else if (!savedViewState.offset) {
+      setOffset({
+        x: (containerWidth - boardWidth) / 2,
+        y: (containerHeight - boardHeight) / 2
+      });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadedImages]);
 
@@ -323,6 +345,13 @@ export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [
   useEffect(() => {
     drawCanvas();
   }, [drawCanvas]);
+
+  // 뷰 상태 변경 시 상위 컴포넌트에 알림
+  useEffect(() => {
+    if (onViewStateChange && offset.x !== 0 && offset.y !== 0) {
+      onViewStateChange({ scale, offset });
+    }
+  }, [scale, offset, onViewStateChange]);
 
   // 윈도우 리사이즈 핸들러
   useEffect(() => {
@@ -577,25 +606,291 @@ export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [
     }
   };
 
-  // 휠 줌
-  const handleWheel = (e) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newScale = Math.max(0.2, Math.min(3, scale * delta));
+  // 터치 이벤트 핸들러
+  const getTouchCenter = (touches) => {
+    const touch1 = touches[0];
+    const touch2 = touches[1] || touches[0];
+    return {
+      x: (touch1.clientX + touch2.clientX) / 2,
+      y: (touch1.clientY + touch2.clientY) / 2
+    };
+  };
+
+  const getTouchDistance = (touches) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[1].clientX - touches[0].clientX;
+    const dy = touches[1].clientY - touches[0].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const handleTouchStart = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
     
-    // 마우스 위치를 중심으로 줌
-    const rect = canvasRef.current.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const rect = canvas.getBoundingClientRect();
     
-    const newOffset = {
-      x: mouseX - (mouseX - offset.x) * (newScale / scale),
-      y: mouseY - (mouseY - offset.y) * (newScale / scale)
+    if (e.touches.length === 2) {
+      // 핀치 줌 시작 - 드래그 상태 해제
+      e.preventDefault();
+      setIsDraggingBoard(false);
+      setIsDraggingPhoto(false);
+      setDraggingPhotoIndex(-1);
+      
+      isTouchZooming.current = true;
+      lastTouchDistance.current = getTouchDistance(e.touches);
+      
+      // 핀치 시작 시점의 중심점과 상태 저장
+      const center = getTouchCenter(e.touches);
+      pinchCenter.current = { 
+        x: center.x - rect.left, 
+        y: center.y - rect.top 
+      };
+      pinchStartScale.current = scale;
+      pinchStartOffset.current = { ...offset };
+      return;
+    }
+    
+    // 핀치 줌 중이면 단일 터치 무시
+    if (isTouchZooming.current) return;
+    
+    const touch = e.touches[0];
+    const touchX = touch.clientX - rect.left;
+    const touchY = touch.clientY - rect.top;
+    
+    // 클릭 위치 저장
+    mouseDownPos.current = { x: touch.clientX, y: touch.clientY };
+    wasDragged.current = false;
+    
+    // 사진 위에서 터치했는지 확인
+    const photoIndex = getPhotoAtPosition(touchX, touchY);
+    
+    if (photoIndex >= 0) {
+      // 사진 드래그 시작
+      setIsDraggingPhoto(true);
+      setDraggingPhotoIndex(photoIndex);
+      
+      const layout = photoLayouts[photoIndex];
+      const transformedX = (touchX - offset.x) / scale;
+      const transformedY = (touchY - offset.y) / scale;
+      
+      setPhotoDragStart({
+        x: transformedX - layout.x,
+        y: transformedY - layout.y
+      });
+    } else {
+      // 보드 드래그 시작
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      setIsDraggingBoard(true);
+      setDragStart({ x: touch.clientX - offset.x, y: touch.clientY - offset.y });
+      
+      velocityRef.current = { x: 0, y: 0 };
+      lastMousePos.current = { x: touch.clientX, y: touch.clientY };
+      lastMoveTime.current = Date.now();
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    
+    // 핀치 줌 처리
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      
+      // 핀치 줌이 아직 시작되지 않았으면 시작
+      if (!isTouchZooming.current) {
+        isTouchZooming.current = true;
+        lastTouchDistance.current = getTouchDistance(e.touches);
+        
+        const center = getTouchCenter(e.touches);
+        pinchCenter.current = { 
+          x: center.x - rect.left, 
+          y: center.y - rect.top 
+        };
+        pinchStartScale.current = scale;
+        pinchStartOffset.current = { ...offset };
+        
+        // 드래그 상태 해제
+        setIsDraggingBoard(false);
+        setIsDraggingPhoto(false);
+        setDraggingPhotoIndex(-1);
+        return;
+      }
+      
+      const currentDistance = getTouchDistance(e.touches);
+      
+      if (lastTouchDistance.current > 0 && currentDistance > 0) {
+        // 시작점 기준 스케일 비율 계산
+        const scaleRatio = currentDistance / lastTouchDistance.current;
+        
+        // 스케일 변화량 제한 (한 프레임당 최대 5% 변화)
+        const clampedRatio = Math.max(0.95, Math.min(1.05, scaleRatio));
+        const newScale = Math.max(0.2, Math.min(3, scale * clampedRatio));
+        
+        // 핀치 중심점을 기준으로 줌
+        const centerX = pinchCenter.current.x;
+        const centerY = pinchCenter.current.y;
+        
+        const newOffset = {
+          x: centerX - (centerX - offset.x) * (newScale / scale),
+          y: centerY - (centerY - offset.y) * (newScale / scale)
+        };
+        
+        setScale(newScale);
+        setOffset(newOffset);
+        lastTouchDistance.current = currentDistance;
+      }
+      return;
+    }
+    
+    // 핀치 줌 중이면 단일 터치 이동 무시
+    if (isTouchZooming.current) return;
+    
+    const touch = e.touches[0];
+    const touchX = touch.clientX - rect.left;
+    const touchY = touch.clientY - rect.top;
+    
+    // 드래그 여부 확인 (10px 이상 이동 - 터치에서 더 관대하게)
+    const dx = touch.clientX - mouseDownPos.current.x;
+    const dy = touch.clientY - mouseDownPos.current.y;
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+      wasDragged.current = true;
+    }
+    
+    if (isDraggingPhoto && draggingPhotoIndex >= 0) {
+      e.preventDefault();
+      // 사진 드래그 중
+      const transformedX = (touchX - offset.x) / scale;
+      const transformedY = (touchY - offset.y) / scale;
+      
+      const newX = transformedX - photoDragStart.x;
+      const newY = transformedY - photoDragStart.y;
+      
+      setPhotoLayouts(prev => {
+        const updated = [...prev];
+        updated[draggingPhotoIndex] = {
+          ...updated[draggingPhotoIndex],
+          x: newX,
+          y: newY
+        };
+        if (onPhotoLayoutsChange) {
+          onPhotoLayoutsChange(updated);
+        }
+        return updated;
+      });
+    } else if (isDraggingBoard) {
+      // 보드 드래그 중
+      const now = Date.now();
+      const dt = now - lastMoveTime.current;
+      
+      if (dt > 0) {
+        const vx = (touch.clientX - lastMousePos.current.x) / dt * 16;
+        const vy = (touch.clientY - lastMousePos.current.y) / dt * 16;
+        
+        velocityRef.current = {
+          x: velocityRef.current.x * 0.5 + vx * 0.5,
+          y: velocityRef.current.y * 0.5 + vy * 0.5
+        };
+      }
+      
+      lastMousePos.current = { x: touch.clientX, y: touch.clientY };
+      lastMoveTime.current = now;
+      
+      setOffset({
+        x: touch.clientX - dragStart.x,
+        y: touch.clientY - dragStart.y
+      });
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    // 핀치 줌 종료 처리
+    if (e.touches.length < 2 && isTouchZooming.current) {
+      isTouchZooming.current = false;
+      lastTouchDistance.current = 0;
+      
+      // 한 손가락이 남아있으면 패닝으로 전환
+      if (e.touches.length === 1) {
+        const touch = e.touches[0];
+        setIsDraggingBoard(true);
+        setDragStart({ x: touch.clientX - offset.x, y: touch.clientY - offset.y });
+        velocityRef.current = { x: 0, y: 0 };
+        lastMousePos.current = { x: touch.clientX, y: touch.clientY };
+        lastMoveTime.current = Date.now();
+        return;
+      }
+    }
+    
+    if (e.touches.length > 0) return; // 아직 터치 중
+    
+    const wasPhotoClick = isDraggingPhoto && !wasDragged.current;
+    const clickedPhotoIndex = draggingPhotoIndex;
+    const wasBoardDrag = isDraggingBoard;
+    
+    setIsDraggingBoard(false);
+    setIsDraggingPhoto(false);
+    setDraggingPhotoIndex(-1);
+    
+    // 사진을 탭했으면 상세 보기 모달 열기
+    if (wasPhotoClick && clickedPhotoIndex >= 0) {
+      const layout = photoLayouts[clickedPhotoIndex];
+      if (layout) {
+        setSelectedPhoto(layout);
+      }
+    }
+    
+    // 보드 드래그 후 관성 스크롤 시작
+    if (wasBoardDrag && wasDragged.current) {
+      const velocity = velocityRef.current;
+      const speed = Math.sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+      
+      if (speed > 0.5) {
+        startInertiaAnimation();
+      }
+    }
+  };
+
+  // 휠 줌 - useEffect에서 non-passive 이벤트로 등록
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const handleWheel = (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      
+      setScale(prevScale => {
+        const newScale = Math.max(0.2, Math.min(3, prevScale * delta));
+        
+        // 마우스 위치를 중심으로 줌
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return prevScale;
+        
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        setOffset(prevOffset => ({
+          x: mouseX - (mouseX - prevOffset.x) * (newScale / prevScale),
+          y: mouseY - (mouseY - prevOffset.y) * (newScale / prevScale)
+        }));
+        
+        return newScale;
+      });
     };
     
-    setScale(newScale);
-    setOffset(newOffset);
-  };
+    // passive: false로 설정하여 preventDefault() 사용 가능
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   // 리셋
   const handleReset = () => {
@@ -694,76 +989,81 @@ export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black">
+    <div className="fixed inset-0 z-[700] bg-black">
       {/* 헤더 */}
-      <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent">
-        <div className="flex items-center justify-between px-8 py-4">
-          <div className="flex items-center gap-4">
-            <div className="w-3 h-3 rounded-full bg-amber-500"></div>
-            <span className="text-white text-sm font-light tracking-wide">photo board</span>
-            <span className="text-gray-400 text-xs">• {images.length}장의 사진</span>
+      <div className="absolute top-0 left-0 right-0 z-[10] bg-gradient-to-b from-black/80 to-transparent">
+        <div className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-amber-500"></div>
+            <span className="text-white text-xs sm:text-sm font-light tracking-wide">photo board</span>
+            <span className="text-gray-400 text-xs hidden sm:inline">• {images.length}장의 사진</span>
           </div>
           <button
             onClick={onClose}
-            className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-white"
           >
             <X className="w-4 h-4" />
-            <span className="text-sm">닫기</span>
+            <span className="text-xs sm:text-sm">닫기</span>
           </button>
         </div>
       </div>
 
-      {/* 컨트롤 패널 */}
-      <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-2 bg-black/60 backdrop-blur-sm rounded-full px-4 py-2">
+      {/* 컨트롤 패널 - 모바일에서 더 간단하게 */}
+      <div className="absolute bottom-4 sm:bottom-6 left-1/2 transform -translate-x-1/2 z-10 flex items-center gap-1 sm:gap-2 bg-black/60 backdrop-blur-sm rounded-full px-2 sm:px-4 py-1.5 sm:py-2">
         <button
           onClick={() => setScale(prev => Math.min(3, prev * 1.2))}
-          className="p-2 hover:bg-white/20 rounded-full transition-colors text-white"
+          className="p-1.5 sm:p-2 hover:bg-white/20 active:bg-white/30 rounded-full transition-colors text-white"
           title="확대"
         >
-          <ZoomIn className="w-5 h-5" />
+          <ZoomIn className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
-        <div className="text-white text-sm px-3 min-w-[60px] text-center">
+        <div className="text-white text-xs sm:text-sm px-2 sm:px-3 min-w-[45px] sm:min-w-[60px] text-center">
           {Math.round(scale * 100)}%
         </div>
         <button
           onClick={() => setScale(prev => Math.max(0.2, prev / 1.2))}
-          className="p-2 hover:bg-white/20 rounded-full transition-colors text-white"
+          className="p-1.5 sm:p-2 hover:bg-white/20 active:bg-white/30 rounded-full transition-colors text-white"
           title="축소"
         >
-          <ZoomOut className="w-5 h-5" />
+          <ZoomOut className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
-        <div className="w-px h-6 bg-white/30 mx-2" />
+        <div className="w-px h-4 sm:h-6 bg-white/30 mx-1 sm:mx-2" />
         <button
           onClick={handleReset}
-          className="p-2 hover:bg-white/20 rounded-full transition-colors text-white"
+          className="p-1.5 sm:p-2 hover:bg-white/20 active:bg-white/30 rounded-full transition-colors text-white"
           title="초기화"
         >
-          <RotateCcw className="w-5 h-5" />
+          <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
-        <div className="w-px h-6 bg-white/30 mx-2" />
+        <div className="w-px h-4 sm:h-6 bg-white/30 mx-1 sm:mx-2" />
         <button
           onClick={handleDownloadClick}
-          className="p-2 hover:bg-white/20 rounded-full transition-colors text-white"
+          className="p-1.5 sm:p-2 hover:bg-white/20 active:bg-white/30 rounded-full transition-colors text-white"
           title="다운로드"
         >
-          <Download className="w-5 h-5" />
+          <Download className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
-        <div className="w-px h-6 bg-white/30 mx-2" />
-        <div className="flex items-center gap-2 text-white/60 text-xs">
-          <Move className="w-4 h-4" />
-          <span>사진 드래그로 이동</span>
+        {/* 모바일에서 힌트 숨김 */}
+        <div className="hidden sm:flex items-center">
+          <div className="w-px h-6 bg-white/30 mx-2" />
+          <div className="flex items-center gap-2 text-white/60 text-xs">
+            <Move className="w-4 h-4" />
+            <span>사진 드래그로 이동</span>
+          </div>
         </div>
       </div>
 
       {/* 캔버스 */}
       <div
         ref={containerRef}
-        className="w-full h-full"
+        className="w-full h-full touch-none"
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseLeave}
-        onWheel={handleWheel}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         <canvas
           ref={canvasRef}
@@ -800,20 +1100,20 @@ export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [
       {/* 제목 입력 모달 */}
       {showTitleInput && (
         <div
-          className="fixed inset-0 z-30 bg-black/70 flex items-center justify-center"
+          className="fixed inset-0 z-30 bg-black/70 flex items-center justify-center p-4"
           onClick={() => setShowTitleInput(false)}
         >
           <div
-            className="bg-gray-900 rounded-2xl p-6 w-full max-w-md mx-4 shadow-2xl border border-gray-700"
+            className="bg-gray-900 rounded-xl sm:rounded-2xl p-4 sm:p-6 w-full max-w-md shadow-2xl border border-gray-700"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="text-white text-lg font-medium mb-4">보드판 제목 입력</h3>
+            <h3 className="text-white text-base sm:text-lg font-medium mb-3 sm:mb-4">보드판 제목 입력</h3>
             <input
               type="text"
               value={downloadTitle}
               onChange={(e) => setDownloadTitle(e.target.value)}
               placeholder="제목을 입력하세요 (선택사항)"
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors"
+              className="w-full px-3 sm:px-4 py-2.5 sm:py-3 bg-gray-800 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-colors text-sm sm:text-base"
               autoFocus
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
@@ -823,19 +1123,19 @@ export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [
                 }
               }}
             />
-            <p className="text-gray-400 text-xs mt-2 mb-4">
-              제목은 이미지 상단 중앙에 표시됩니다. 비워두면 제목 없이 저장됩니다.
+            <p className="text-gray-400 text-xs mt-2 mb-3 sm:mb-4">
+              제목은 이미지 상단 중앙에 표시됩니다.
             </p>
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={() => setShowTitleInput(false)}
-                className="flex-1 px-4 py-2.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+                className="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-700 hover:bg-gray-600 active:bg-gray-500 text-white rounded-lg transition-colors text-sm sm:text-base"
               >
                 취소
               </button>
               <button
                 onClick={handleDownload}
-                className="flex-1 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                className="flex-1 px-3 sm:px-4 py-2 sm:py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-400 text-white rounded-lg transition-colors flex items-center justify-center gap-1.5 sm:gap-2 text-sm sm:text-base"
               >
                 <Download className="w-4 h-4" />
                 다운로드
@@ -847,10 +1147,11 @@ export const BoardMode = ({ images, onClose, onImageClick, savedPhotoLayouts = [
 
       {/* 처음 진입 시 안내 메시지 */}
       {showWelcomeMessage && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none">
-          <div className="bg-black/70 backdrop-blur-sm rounded-2xl px-8 py-6 shadow-2xl">
-            <p className="text-white text-lg text-center whitespace-nowrap">
-              사진을 움직여 보드판을 완성 후 하단 다운로드 해보세요
+        <div className="fixed inset-0 z-40 flex items-center justify-center pointer-events-none px-4">
+          <div className="bg-black/70 backdrop-blur-sm rounded-xl sm:rounded-2xl px-4 sm:px-8 py-4 sm:py-6 shadow-2xl">
+            <p className="text-white text-sm sm:text-lg text-center">
+              사진을 움직여 보드판을 완성 후<br className="sm:hidden" />
+              <span className="hidden sm:inline"> </span>하단 다운로드 해보세요
             </p>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { MapUpdater } from './MapUpdater.jsx';
 
@@ -8,24 +8,38 @@ export const MetadataSidebar = ({
   selectedImage, 
   formattedMetadata, 
   selectedImageId,
-  onNavigateImage 
+  onNavigateImage,
+  isMobile = false,
+  onClose
 }) => {
   return (
-    <aside className="fixed left-0 top-16 bottom-0 w-64 bg-black border-r border-gray-800 flex flex-col z-40 overflow-y-auto">
-      <div className="p-6 flex-1 flex flex-col">
+    <aside className={`${isMobile ? 'relative w-full' : 'fixed left-0 top-16 bottom-0 w-64'} bg-black border-r border-gray-800 flex flex-col z-40 overflow-y-auto`}>
+      {/* 모바일 닫기 버튼 */}
+      {isMobile && onClose && (
+        <div className="flex items-center justify-between p-4 border-b border-gray-800">
+          <span className="text-sm text-gray-400">메타데이터</span>
+          <button 
+            onClick={onClose}
+            className="p-1 hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+      <div className={`${isMobile ? 'p-4' : 'p-6'} flex-1 flex flex-col`}>
         {/* 컨트롤 */}
-        <div className="mb-8">
+        <div className={`${isMobile ? 'mb-4' : 'mb-8'}`}>
           <div className="flex items-center gap-2 mb-2">
             <button 
               onClick={() => onNavigateImage('prev')}
-              className="hover:text-gray-400 transition-colors"
+              className="hover:text-gray-400 transition-colors p-1"
               disabled={images.length === 0}
             >
               <ChevronUp className="w-4 h-4" />
             </button>
             <button 
               onClick={() => onNavigateImage('next')}
-              className="hover:text-gray-400 transition-colors"
+              className="hover:text-gray-400 transition-colors p-1"
               disabled={images.length === 0}
             >
               <ChevronDown className="w-4 h-4" />
@@ -37,8 +51,8 @@ export const MetadataSidebar = ({
 
         {/* 현재 이미지 번호 */}
         {images.length > 0 && (
-          <div className="mb-8">
-            <p className="text-4xl font-light text-gray-300 mb-2">
+          <div className={`${isMobile ? 'mb-4' : 'mb-8'}`}>
+            <p className={`${isMobile ? 'text-2xl' : 'text-4xl'} font-light text-gray-300 mb-2`}>
               {currentIndex + 1}/{images.length}
             </p>
           </div>
@@ -76,7 +90,7 @@ export const MetadataSidebar = ({
                 {/* 지도 표시 */}
                 {formattedMetadata.gpsCoords && (
                   <div className="mt-4">
-                    <div className="w-full h-48 rounded-lg overflow-hidden border border-gray-700">
+                    <div className={`w-full ${isMobile ? 'h-40' : 'h-48'} rounded-lg overflow-hidden border border-gray-700`}>
                       <MapContainer
                         key={`${formattedMetadata.gpsCoords.lat}-${formattedMetadata.gpsCoords.lon}-${selectedImageId}`}
                         center={[formattedMetadata.gpsCoords.lat, formattedMetadata.gpsCoords.lon]}

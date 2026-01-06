@@ -12,6 +12,41 @@
   background-color: #2a2a2a;
 }
 
+/* Leaflet 컨트롤 모바일 터치 최적화 */
+.leaflet-control-zoom {
+  pointer-events: auto !important;
+  touch-action: manipulation;
+}
+
+.leaflet-control-zoom a {
+  pointer-events: auto !important;
+  touch-action: manipulation;
+  /* 모바일에서 더 큰 터치 영역 */
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+  font-size: 20px !important;
+}
+
+@media (min-width: 768px) {
+  .leaflet-control-zoom a {
+    width: 30px !important;
+    height: 30px !important;
+    line-height: 30px !important;
+    font-size: 18px !important;
+  }
+}
+
+/* Leaflet 컨트롤 z-index 조정 (Leaflet 기본값이 400대) */
+.leaflet-top.leaflet-left {
+  z-index: 450 !important;
+  pointer-events: auto !important;
+}
+
+.leaflet-control-container {
+  z-index: 450 !important;
+}
+
 /* Lightbox 애니메이션 */
 @keyframes fadeIn {
   from {
