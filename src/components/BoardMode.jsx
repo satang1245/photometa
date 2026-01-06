@@ -83,12 +83,22 @@ export const BoardMode = ({
     // 저장된 레이아웃이 있고 이미지 개수가 같으면 기존 위치 사용
     if (savedPhotoLayouts.length > 0 && savedPhotoLayouts.length === loadedImages.length) {
       // 이미지 ID로 매칭하여 기존 레이아웃 재사용
+      // savedLayout.image?.id (이전 형식) 또는 savedLayout.imageId (새 형식) 모두 지원
       const matchedLayouts = loadedImages.map((img) => {
-        const savedLayout = savedPhotoLayouts.find(layout => layout.image?.id === img.id);
+        const savedLayout = savedPhotoLayouts.find(layout => 
+          (layout.imageId === img.id) || (layout.image?.id === img.id)
+        );
         if (savedLayout) {
           // 기존 레이아웃을 사용하되, image 객체만 업데이트
           return {
-            ...savedLayout,
+            x: savedLayout.x,
+            y: savedLayout.y,
+            width: savedLayout.width,
+            height: savedLayout.height,
+            rotation: savedLayout.rotation,
+            pinColor: savedLayout.pinColor,
+            cameraInfo: savedLayout.cameraInfo,
+            dateInfo: savedLayout.dateInfo,
             image: img
           };
         }

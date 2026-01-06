@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import ExifReader from 'exifreader';
 import { Upload, Map, LayoutGrid, Menu, X } from 'lucide-react';
 import L from 'leaflet';
@@ -15,6 +15,7 @@ import { ImagePreview } from './components/ImagePreview.jsx';
 import { MapMode } from './components/MapMode.jsx';
 import { ImageLightbox } from './components/ImageLightbox.jsx';
 import { BoardMode } from './components/BoardMode.jsx';
+import { useIndexedDB } from './hooks/useIndexedDB.js';
 
 // Leaflet 마커 아이콘 설정
 delete L.Icon.Default.prototype._getIconUrl;
@@ -42,8 +43,138 @@ function App() {
   const [boardViewState, setBoardViewState] = useState({ scale: 1, offset: null });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // IndexedDB 훅
+  const {
+    isDBReady,
+    isLoading: isDBLoading,
+    saveImage,
+    saveAllImages,
+    loadAllImages,
+    deleteImage: deleteImageFromDB,
+    saveState,
+    loadState
+  } = useIndexedDB();
+
+  // 저장 디바운스를 위한 타이머 ref
+  const saveTimerRef = useRef(null);
 
   const selectedImage = images.find(img => img.id === selectedImageId) || images[currentIndex] || null;
+
+  // IndexedDB에서 데이터 복원
+  useEffect(() => {
+    const restoreData = async () => {
+      if (!isDBReady || isInitialized) return;
+      
+      console.log('[App] 데이터 복원 시작, isDBReady:', isDBReady);
+      
+      try {
+        // 저장된 이미지 불러오기
+        const savedImages = await loadAllImages();
+        
+        console.log('[App] 불러온 이미지 개수:', savedImages.length);
+        
+        if (savedImages.length > 0) {
+          const sortedImages = sortImagesByTime(savedImages);
+          setImages(sortedImages);
+          
+          // 저장된 선택 상태 복원
+          const savedSelectedId = await loadState('selectedImageId');
+          const savedCurrentIndex = await loadState('currentIndex');
+          
+          if (savedSelectedId && sortedImages.find(img => img.id === savedSelectedId)) {
+            setSelectedImageId(savedSelectedId);
+          } else if (sortedImages.length > 0) {
+            setSelectedImageId(sortedImages[0].id);
+          }
+          
+          if (savedCurrentIndex !== null && savedCurrentIndex < sortedImages.length) {
+            setCurrentIndex(savedCurrentIndex);
+          }
+          
+          // 보드 레이아웃 복원
+          const savedBoardLayouts = await loadState('boardPhotoLayouts');
+          if (savedBoardLayouts) {
+            setBoardPhotoLayouts(savedBoardLayouts);
+          }
+          
+          const savedBoardViewState = await loadState('boardViewState');
+          if (savedBoardViewState) {
+            setBoardViewState(savedBoardViewState);
+          }
+          
+          console.log('[App] 데이터 복원 완료');
+        } else {
+          console.log('[App] 저장된 이미지 없음');
+        }
+      } catch (error) {
+        console.error('데이터 복원 오류:', error);
+      } finally {
+        setIsInitialized(true);
+      }
+    };
+    
+    restoreData();
+  }, [isDBReady, isInitialized, loadAllImages, loadState]);
+
+  // 이미지 변경 시 IndexedDB에 저장 (디바운스 적용)
+  useEffect(() => {
+    if (!isDBReady || !isInitialized) return;
+    
+    // 기존 타이머 취소
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    
+    // 1초 후에 저장 (디바운스)
+    saveTimerRef.current = setTimeout(async () => {
+      console.log('[App] 이미지 저장 시작, 개수:', images.length);
+      await saveAllImages(images);
+    }, 1000);
+    
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
+  }, [images, isDBReady, isInitialized, saveAllImages]);
+
+  // 선택 상태 변경 시 저장
+  useEffect(() => {
+    if (!isDBReady || !isInitialized) return;
+    
+    saveState('selectedImageId', selectedImageId);
+    saveState('currentIndex', currentIndex);
+  }, [selectedImageId, currentIndex, isDBReady, isInitialized, saveState]);
+
+  // 보드 레이아웃 변경 시 저장 (직렬화 가능한 데이터만 저장)
+  useEffect(() => {
+    if (!isDBReady || !isInitialized) return;
+    
+    // HTMLImageElement 등 직렬화 불가능한 객체 제거
+    const serializableLayouts = boardPhotoLayouts.map(layout => ({
+      x: layout.x,
+      y: layout.y,
+      width: layout.width,
+      height: layout.height,
+      rotation: layout.rotation,
+      pinColor: layout.pinColor,
+      cameraInfo: layout.cameraInfo,
+      dateInfo: layout.dateInfo,
+      // image 객체에서 id만 저장 (나중에 복원할 때 사용)
+      imageId: layout.image?.id
+    }));
+    
+    saveState('boardPhotoLayouts', serializableLayouts);
+  }, [boardPhotoLayouts, isDBReady, isInitialized, saveState]);
+
+  // 보드 뷰 상태 변경 시 저장
+  useEffect(() => {
+    if (!isDBReady || !isInitialized) return;
+    
+    saveState('boardViewState', boardViewState);
+  }, [boardViewState, isDBReady, isInitialized, saveState]);
 
   // 파일 처리 공통 함수
   const processFiles = async (files) => {
@@ -189,12 +320,16 @@ function App() {
     setIsLightboxOpen(false);
   };
 
-  const handleRemoveImage = (imageId) => {
+  const handleRemoveImage = async (imageId) => {
     const image = images.find(img => img.id === imageId);
     if (image) {
       URL.revokeObjectURL(image.url);
       URL.revokeObjectURL(image.thumbnailUrl);
     }
+    
+    // IndexedDB에서도 삭제
+    await deleteImageFromDB(imageId);
+    
     const newImages = images.filter(img => img.id !== imageId);
     setImages(newImages);
     
@@ -338,6 +473,18 @@ function App() {
       setIsRoutePlaying(false);
     }
   }, [isRoutePlaying, currentRouteIndex, sortedRoute.length]);
+
+  // DB 로딩 중일 때 로딩 화면 표시
+  if (isDBLoading || !isInitialized) {
+    return (
+      <div className="flex h-screen bg-black items-center justify-center font-sans text-white">
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-gray-600 border-t-white rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400 text-sm">데이터 불러오는 중...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-black overflow-hidden font-sans text-white">
