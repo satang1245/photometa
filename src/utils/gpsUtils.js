@@ -112,8 +112,8 @@ export const parseGPS = (metadata) => {
     if (lat !== null && lon !== null && !isNaN(lat) && !isNaN(lon)) {
       return { lat, lon };
     }
-  } catch (error) {
-    console.error('GPS 파싱 오류:', error);
+  } catch {
+    // GPS 파싱 오류 무시
   }
   return null;
 };

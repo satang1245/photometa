@@ -108,9 +108,12 @@ export const BoardMode = ({
       // 모든 이미지가 매칭되면 기존 레이아웃 사용
       if (matchedLayouts.length === loadedImages.length) {
         setPhotoLayouts(matchedLayouts);
-        if (onPhotoLayoutsChange) {
-          onPhotoLayoutsChange(matchedLayouts);
-        }
+        // 상위 컴포넌트에 변경 사항 알림 (렌더링 후)
+        setTimeout(() => {
+          if (onPhotoLayoutsChange) {
+            onPhotoLayoutsChange(matchedLayouts);
+          }
+        }, 0);
         return;
       }
     }
@@ -179,9 +182,12 @@ export const BoardMode = ({
     });
     
     setPhotoLayouts(layouts);
-    if (onPhotoLayoutsChange) {
-      onPhotoLayoutsChange(layouts);
-    }
+    // 상위 컴포넌트에 변경 사항 알림 (렌더링 후)
+    setTimeout(() => {
+      if (onPhotoLayoutsChange) {
+        onPhotoLayoutsChange(layouts);
+      }
+    }, 0);
     
     // 초기 오프셋 설정 - 저장된 상태가 있으면 사용, 없으면 중앙에서 시작
     if (isInitialLoad && savedViewState.offset) {
@@ -242,6 +248,11 @@ export const BoardMode = ({
     
     // 각 사진 그리기
     photoLayouts.forEach((layout, index) => {
+      // layout.image나 loadedImage가 없으면 스킵
+      if (!layout || !layout.image || !layout.image.loadedImage) {
+        return;
+      }
+      
       ctx.save();
       
       // 중심점으로 이동 후 회전
@@ -486,19 +497,22 @@ export const BoardMode = ({
       const newX = transformedX - photoDragStart.x;
       const newY = transformedY - photoDragStart.y;
       
-      setPhotoLayouts(prev => {
-        const updated = [...prev];
-        updated[draggingPhotoIndex] = {
-          ...updated[draggingPhotoIndex],
-          x: newX,
-          y: newY
-        };
-        // 상위 컴포넌트에 변경 사항 알림
+      // 상태 업데이트와 상위 컴포넌트 알림을 분리
+      const updated = [...photoLayouts];
+      updated[draggingPhotoIndex] = {
+        ...updated[draggingPhotoIndex],
+        x: newX,
+        y: newY
+      };
+      
+      setPhotoLayouts(updated);
+      
+      // 상위 컴포넌트에 변경 사항 알림 (상태 업데이트 후)
+      setTimeout(() => {
         if (onPhotoLayoutsChange) {
           onPhotoLayoutsChange(updated);
         }
-        return updated;
-      });
+      }, 0);
       
       canvas.style.cursor = 'grabbing';
     } else if (isDraggingBoard) {
@@ -782,18 +796,22 @@ export const BoardMode = ({
       const newX = transformedX - photoDragStart.x;
       const newY = transformedY - photoDragStart.y;
       
-      setPhotoLayouts(prev => {
-        const updated = [...prev];
-        updated[draggingPhotoIndex] = {
-          ...updated[draggingPhotoIndex],
-          x: newX,
-          y: newY
-        };
+      // 상태 업데이트와 상위 컴포넌트 알림을 분리
+      const updated = [...photoLayouts];
+      updated[draggingPhotoIndex] = {
+        ...updated[draggingPhotoIndex],
+        x: newX,
+        y: newY
+      };
+      
+      setPhotoLayouts(updated);
+      
+      // 상위 컴포넌트에 변경 사항 알림 (상태 업데이트 후)
+      setTimeout(() => {
         if (onPhotoLayoutsChange) {
           onPhotoLayoutsChange(updated);
         }
-        return updated;
-      });
+      }, 0);
     } else if (isDraggingBoard) {
       // 보드 드래그 중
       const now = Date.now();

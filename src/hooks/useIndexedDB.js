@@ -57,8 +57,6 @@ const base64ToBlob = async (base64) => {
  */
 const serializeImage = async (image) => {
   try {
-    console.log('[IndexedDB] 이미지 직렬화 시작:', image.id, 'URL:', image.url?.substring(0, 50));
-    
     // URL에서 Blob 가져오기
     const imageResponse = await fetch(image.url);
     if (!imageResponse.ok) {
@@ -76,8 +74,6 @@ const serializeImage = async (image) => {
     const imageBase64 = await blobToBase64(imageBlob);
     const thumbnailBase64 = await blobToBase64(thumbnailBlob);
     
-    console.log('[IndexedDB] 이미지 직렬화 완료:', image.id, 'Base64 길이:', imageBase64.length);
-    
     return {
       id: image.id,
       imageData: imageBase64,
@@ -89,8 +85,7 @@ const serializeImage = async (image) => {
       loading: false,
       timestamp: Date.now()
     };
-  } catch (error) {
-    console.error('이미지 직렬화 오류:', image.id, error);
+  } catch {
     return null;
   }
 };
@@ -122,8 +117,7 @@ const deserializeImage = async (data) => {
       file,
       loading: false
     };
-  } catch (error) {
-    console.error('이미지 역직렬화 오류:', error);
+  } catch {
     return null;
   }
 };
@@ -143,8 +137,8 @@ export const useIndexedDB = () => {
         const database = await openDB();
         setDb(database);
         setIsDBReady(true);
-      } catch (error) {
-        console.error('IndexedDB 초기화 오류:', error);
+      } catch {
+        // DB 초기화 실패 시 무시
       } finally {
         setIsLoading(false);
       }
@@ -177,8 +171,7 @@ export const useIndexedDB = () => {
         request.onsuccess = () => resolve(true);
         request.onerror = () => reject(request.error);
       });
-    } catch (error) {
-      console.error('이미지 저장 오류:', error);
+    } catch {
       return false;
     }
   }, [db]);
@@ -187,14 +180,10 @@ export const useIndexedDB = () => {
    * 모든 이미지 저장
    */
   const saveAllImages = useCallback(async (images) => {
-    if (!db) {
-      console.log('[IndexedDB] DB가 준비되지 않아 저장 스킵');
-      return;
-    }
+    if (!db) return;
     
     // 이미지가 없으면 저장소 비우기
     if (images.length === 0) {
-      console.log('[IndexedDB] 이미지 없음, 저장소 비우기');
       return new Promise((resolve, reject) => {
         const transaction = db.transaction([IMAGES_STORE], 'readwrite');
         const store = transaction.objectStore(IMAGES_STORE);
@@ -213,15 +202,12 @@ export const useIndexedDB = () => {
           if (serialized) {
             serializedImages.push(serialized);
           }
-        } catch (err) {
-          console.error('[IndexedDB] 개별 이미지 직렬화 실패:', image.id, err);
+        } catch {
+          // 개별 이미지 직렬화 실패 무시
         }
       }
       
-      console.log('[IndexedDB] 저장할 이미지 개수:', serializedImages.length, '/', images.length);
-      
       if (serializedImages.length === 0) {
-        console.log('[IndexedDB] 직렬화된 이미지가 없어 저장 스킵');
         return;
       }
       
@@ -238,7 +224,6 @@ export const useIndexedDB = () => {
           for (const serialized of serializedImages) {
             store.put(serialized);
           }
-          console.log('[IndexedDB] 저장 완료');
         };
         
         clearRequest.onerror = () => reject(clearRequest.error);
@@ -246,8 +231,8 @@ export const useIndexedDB = () => {
         transaction.oncomplete = () => resolve(true);
         transaction.onerror = () => reject(transaction.error);
       });
-    } catch (error) {
-      console.error('이미지 일괄 저장 오류:', error);
+    } catch {
+      // 저장 오류 무시
     }
   }, [db]);
 
@@ -255,10 +240,7 @@ export const useIndexedDB = () => {
    * 모든 이미지 불러오기
    */
   const loadAllImages = useCallback(async () => {
-    if (!db) {
-      console.log('[IndexedDB] DB가 준비되지 않음');
-      return [];
-    }
+    if (!db) return [];
     
     try {
       // 먼저 저장된 데이터 가져오기
@@ -267,11 +249,7 @@ export const useIndexedDB = () => {
         const store = transaction.objectStore(IMAGES_STORE);
         const request = store.getAll();
         
-        request.onsuccess = () => {
-          console.log('[IndexedDB] 저장된 이미지 개수:', request.result.length);
-          resolve(request.result);
-        };
-        
+        request.onsuccess = () => resolve(request.result);
         request.onerror = () => reject(request.error);
       });
       
@@ -284,10 +262,8 @@ export const useIndexedDB = () => {
         }
       }
       
-      console.log('[IndexedDB] 복원된 이미지 개수:', images.length);
       return images;
-    } catch (error) {
-      console.error('이미지 불러오기 오류:', error);
+    } catch {
       return [];
     }
   }, [db]);
@@ -307,8 +283,7 @@ export const useIndexedDB = () => {
         request.onsuccess = () => resolve(true);
         request.onerror = () => reject(request.error);
       });
-    } catch (error) {
-      console.error('이미지 삭제 오류:', error);
+    } catch {
       return false;
     }
   }, [db]);
@@ -328,8 +303,7 @@ export const useIndexedDB = () => {
         request.onsuccess = () => resolve(true);
         request.onerror = () => reject(request.error);
       });
-    } catch (error) {
-      console.error('이미지 전체 삭제 오류:', error);
+    } catch {
       return false;
     }
   }, [db]);
@@ -349,8 +323,7 @@ export const useIndexedDB = () => {
         request.onsuccess = () => resolve(true);
         request.onerror = () => reject(request.error);
       });
-    } catch (error) {
-      console.error('상태 저장 오류:', error);
+    } catch {
       return false;
     }
   }, [db]);
@@ -372,8 +345,7 @@ export const useIndexedDB = () => {
         };
         request.onerror = () => reject(request.error);
       });
-    } catch (error) {
-      console.error('상태 불러오기 오류:', error);
+    } catch {
       return null;
     }
   }, [db]);
@@ -393,8 +365,7 @@ export const useIndexedDB = () => {
         request.onsuccess = () => resolve(true);
         request.onerror = () => reject(request.error);
       });
-    } catch (error) {
-      console.error('상태 전체 삭제 오류:', error);
+    } catch {
       return false;
     }
   }, [db]);
@@ -412,4 +383,3 @@ export const useIndexedDB = () => {
     clearAllState
   };
 };
-

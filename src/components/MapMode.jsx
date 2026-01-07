@@ -1,11 +1,15 @@
 import { useRef } from 'react';
 import html2canvas from 'html2canvas';
 import { Download } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { MapUpdater } from './MapUpdater.jsx';
 import { MapBoundsUpdater } from './MapBoundsUpdater.jsx';
 import { MapWheelHandler } from './MapWheelHandler.jsx';
 import { AnimatedCarMarker, createCarIcon, resetCarMarker } from './AnimatedCarMarker.jsx';
+import { MapTimeline } from './MapTimeline.jsx';
+import { AnimatedPolyline, resetPolylines } from './AnimatedPolyline.jsx';
+import { ThumbnailMarkers } from './ThumbnailMarkers.jsx';
+import L from 'leaflet';
 
 export const MapMode = ({ 
   mapBounds, 
@@ -21,9 +25,17 @@ export const MapMode = ({
   onCloseMapMode,
   autoZoomEnabled,
   onAutoZoomToggle,
-  onAutoZoomDisabled
+  onAutoZoomDisabled,
+  onRouteIndexChange
 }) => {
   const mapContainerRef = useRef(null);
+
+  // 타임라인 아이템 클릭 핸들러
+  const handleTimelineItemClick = (item, index) => {
+    if (onRouteIndexChange) {
+      onRouteIndexChange(index);
+    }
+  };
 
   // 지도 다운로드 함수
   const handleMapDownload = async () => {
@@ -179,20 +191,27 @@ export const MapMode = ({
       link.click();
       document.body.removeChild(link);
     } catch (error) {
-      console.error('지도 다운로드 중 오류 발생:', error);
       const errorMessage = error?.message || error?.toString() || '알 수 없는 오류';
-      console.error('오류 상세:', errorMessage);
-      if (error?.stack) {
-        console.error('스택 트레이스:', error.stack);
-      }
       alert(`지도 다운로드 중 오류가 발생했습니다: ${errorMessage}`);
     }
   };
 
   return (
-    <div ref={mapContainerRef} className="h-full w-full relative touch-auto">
-      {/* 동선 버튼 및 다운로드 버튼 - 모바일에서는 상단에 안전하게 표시 (Leaflet z-index가 400대) */}
-      <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-[500] flex flex-col gap-2 pointer-events-auto safe-area-top">
+    <div className="h-full w-full flex">
+      {/* PC 모드 타임라인 사이드바 (왼쪽) */}
+      <div className="hidden lg:block flex-shrink-0">
+        <MapTimeline
+          sortedRoute={sortedRoute}
+          currentRouteIndex={currentRouteIndex}
+          isRoutePlaying={isRoutePlaying}
+          onItemClick={handleTimelineItemClick}
+        />
+      </div>
+
+      {/* 지도 영역 */}
+      <div ref={mapContainerRef} className="flex-1 h-full relative touch-auto">
+        {/* 동선 버튼 및 다운로드 버튼 - 모바일에서는 상단에 안전하게 표시 (Leaflet z-index가 400대) */}
+        <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-[500] flex flex-col gap-2 pointer-events-auto safe-area-top">
         <div className="flex gap-1.5 sm:gap-2">
           <button
             onClick={handleMapDownload}
@@ -245,43 +264,25 @@ export const MapMode = ({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {/* 전체 경로 선 표시 */}
+        {/* 경로 선 표시 - Leaflet 직접 제어로 깜빡임 방지 */}
         {routePath.length > 1 && (
-          <Polyline
-            positions={routePath}
-            pathOptions={{
-              color: '#3b82f6',
-              weight: 4,
-              opacity: 0.7
-            }}
+          <AnimatedPolyline
+            routePath={routePath}
+            currentRouteIndex={currentRouteIndex}
+            isRoutePlaying={isRoutePlaying}
           />
         )}
-        {/* 현재까지 이동한 경로 (애니메이션용) */}
-        {isRoutePlaying && currentRouteIndex > 0 && (
-          <Polyline
-            positions={routePath.slice(0, currentRouteIndex + 1)}
-            pathOptions={{
-              color: '#10b981',
-              weight: 5,
-              opacity: 1
-            }}
-          />
-        )}
-        {/* 자동차 마커 (현재 위치) - 애니메이션 */}
-        {currentRoutePosition && (
+        {/* 자동차 마커 (현재 위치) - 동선 애니메이션 중일 때만 표시 */}
+        {isRoutePlaying && currentRoutePosition && (
           <>
-            {/* 동선 애니메이션 중일 때만 bounds로 조정, 애니메이션이 끝나면 아무것도 하지 않음 */}
-            {isRoutePlaying && (
-              <MapBoundsUpdater 
-                currentPosition={[currentRoutePosition.lat, currentRoutePosition.lon]}
-                nextPosition={currentRouteIndex < routePath.length - 1 
-                  ? routePath[currentRouteIndex + 1] 
-                  : null}
-                enabled={autoZoomEnabled}
-              />
-            )}
+            <MapBoundsUpdater 
+              currentPosition={[currentRoutePosition.lat, currentRoutePosition.lon]}
+              nextPosition={currentRouteIndex < routePath.length - 1 
+                ? routePath[currentRouteIndex + 1] 
+                : null}
+              enabled={autoZoomEnabled}
+            />
             <AnimatedCarMarker 
-              key={`car-${currentRouteIndex}`}
               position={[currentRoutePosition.lat, currentRoutePosition.lon]}
               icon={createCarIcon()}
             />
@@ -305,76 +306,37 @@ export const MapMode = ({
             </Marker>
           </>
         )}
-        {gpsLocations.map((location, index) => (
-          <Marker 
-            key={`${location.image.id}-${index}`}
-            position={[location.coords.lat, location.coords.lon]}
-            eventHandlers={{
-              click: () => {
-                const imageIndex = images.findIndex(img => img.id === location.image.id);
-                if (imageIndex !== -1) {
-                  onThumbnailClick(location.image.id, imageIndex);
-                  onCloseMapMode();
-                }
-              }
-            }}
-          >
-            <Tooltip permanent={false} direction="top" offset={[0, -10]}>
-              <div className="flex flex-col items-center gap-2 p-2">
-                <img 
-                  src={location.image.thumbnailUrl} 
-                  alt="Thumbnail"
-                  className="w-24 h-24 rounded-lg object-cover border-2 border-white shadow-lg"
-                />
-                <span className="text-xs text-gray-800 font-medium">이미지 {index + 1}</span>
-              </div>
-            </Tooltip>
-            <Popup>
-              <div className="flex flex-col items-center gap-2">
-                <img 
-                  src={location.image.thumbnailUrl} 
-                  alt="Thumbnail"
-                  className="w-32 h-32 rounded-lg object-cover"
-                />
-                <button
-                  onClick={() => {
-                    const imageIndex = images.findIndex(img => img.id === location.image.id);
-                    if (imageIndex !== -1) {
-                      onThumbnailClick(location.image.id, imageIndex);
-                      onCloseMapMode();
-                    }
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
-                >
-                  이미지 보기
-                </button>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+        {/* 썸네일 마커들 - 별도 컴포넌트로 분리하여 깜빡임 방지 */}
+        <ThumbnailMarkers
+          gpsLocations={gpsLocations}
+          images={images}
+          onThumbnailClick={onThumbnailClick}
+          onCloseMapMode={onCloseMapMode}
+        />
       </MapContainer>
       
-      {/* 동선 진행 프로그래스바 */}
-      {isRoutePlaying && sortedRoute.length > 0 && (
-        <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-black/90 backdrop-blur-sm border-t border-gray-800">
-          <div className="px-4 py-2 sm:px-8 sm:py-4">
-            <div className="flex items-center justify-between mb-1 sm:mb-2">
-              <span className="text-xs sm:text-sm text-gray-300">
-                동선 ({currentRouteIndex + 1} / {sortedRoute.length})
-              </span>
-              <span className="text-xs sm:text-sm text-gray-400">
-                {Math.round(((currentRouteIndex + 1) / sortedRoute.length) * 100)}%
-              </span>
-            </div>
-            <div className="w-full bg-gray-800 rounded-full h-1.5 sm:h-2 overflow-hidden">
-              <div 
-                className="bg-green-500 h-full rounded-full transition-all duration-300 ease-out"
-                style={{ width: `${((currentRouteIndex + 1) / sortedRoute.length) * 100}%` }}
-              ></div>
+        {/* 동선 진행 프로그래스바 - 모바일/타블렛에서만 표시 (PC에서는 타임라인에 표시됨) */}
+        {isRoutePlaying && sortedRoute.length > 0 && (
+          <div className="lg:hidden absolute bottom-0 left-0 right-0 z-[1000] bg-black/90 backdrop-blur-sm border-t border-gray-800">
+            <div className="px-4 py-2 sm:px-8 sm:py-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-xs sm:text-sm text-gray-300">
+                  동선 ({currentRouteIndex + 1} / {sortedRoute.length})
+                </span>
+                <span className="text-xs sm:text-sm text-gray-400">
+                  {Math.round(((currentRouteIndex + 1) / sortedRoute.length) * 100)}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-800 rounded-full h-1.5 sm:h-2 overflow-hidden">
+                <div 
+                  className="bg-green-500 h-full rounded-full transition-all duration-300 ease-out"
+                  style={{ width: `${((currentRouteIndex + 1) / sortedRoute.length) * 100}%` }}
+                ></div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };

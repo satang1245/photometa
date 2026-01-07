@@ -1,6 +1,5 @@
 import { useMap } from 'react-leaflet';
-import { useEffect } from 'react';
-import L from 'leaflet';
+import { useEffect, useRef } from 'react';
 
 // 하버사인 공식으로 거리 계산 (km)
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -22,6 +21,8 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 // enabled가 false이면 자동 줌과 마커 따라다니기 모두 비활성화
 export const MapBoundsUpdater = ({ currentPosition, nextPosition, enabled }) => {
   const map = useMap();
+  const isFirstRender = useRef(true);
+  const timeoutRef = useRef(null);
 
   useEffect(() => {
     // enabled가 false이면 아무것도 하지 않음 (사용자가 휠로 줌 아웃한 경우)
@@ -58,12 +59,36 @@ export const MapBoundsUpdater = ({ currentPosition, nextPosition, enabled }) => 
       targetZoom = 14;
     }
 
-    // 현재 자동차 위치를 중심으로 이동
-    map.setView(currentPosition, targetZoom, {
-      animate: true,
-      duration: 0.5,
-    });
+    // 첫 렌더링 시에는 약간의 지연을 주어 깜빡임 방지
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      timeoutRef.current = setTimeout(() => {
+        map.setView(currentPosition, targetZoom, {
+          animate: true,
+          duration: 0.8,
+        });
+      }, 100);
+    } else {
+      // 현재 자동차 위치를 중심으로 이동
+      map.setView(currentPosition, targetZoom, {
+        animate: true,
+        duration: 0.5,
+      });
+    }
+
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
   }, [currentPosition, nextPosition, enabled, map]);
+
+  // 컴포넌트 언마운트 시 초기화
+  useEffect(() => {
+    return () => {
+      isFirstRender.current = true;
+    };
+  }, []);
 
   return null;
 };

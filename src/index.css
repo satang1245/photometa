@@ -50,3 +50,141 @@ body {
 .safe-area-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
+
+/* 커스텀 썸네일 마커 스타일 */
+.thumbnail-marker {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumbnail-marker-inner {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.thumbnail-marker-inner:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
+.thumbnail-marker-inner img {
+  width: 100% !important;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 마커 하단 화살표 */
+.thumbnail-marker::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-top: 10px solid white;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.2));
+}
+
+/* 선택된/활성화된 마커 스타일 */
+.thumbnail-marker.active .thumbnail-marker-inner {
+  border-color: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.3), 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.thumbnail-marker.active::after {
+  border-top-color: #22c55e;
+}
+
+/* 마커 호버 효과 */
+.thumbnail-marker-container {
+  transition: z-index 0s;
+}
+
+.marker-hovered .thumbnail-marker {
+  z-index: 10000 !important;
+}
+
+.marker-hovered .thumbnail-marker-inner {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(59, 130, 246, 0.5);
+  border-color: #3b82f6;
+}
+
+.marker-hovered .thumbnail-marker::after {
+  border-top-color: #3b82f6;
+}
+
+/* 스택된 마커들의 기본 스타일 */
+.marker-stack-1 .thumbnail-marker-inner,
+.marker-stack-2 .thumbnail-marker-inner,
+.marker-stack-3 .thumbnail-marker-inner {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4), 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* 자동차 마커 애니메이션 */
+.car-marker {
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Leaflet Polyline 부드러운 표시 */
+.leaflet-overlay-pane svg {
+  transition: opacity 0.3s ease-in-out;
+}
+
+.leaflet-overlay-pane path {
+  transition: stroke-dashoffset 0.3s ease-in-out, opacity 0.3s ease-in-out;
+}
+
+/* 커스텀 스크롤바 스타일 */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #374151 transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: #374151;
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: #4b5563;
+}
+
+/* 타임라인 애니메이션 */
+@keyframes timeline-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.timeline-pulse {
+  animation: timeline-pulse 2s ease-in-out infinite;
+}
+
+/* line-clamp 유틸리티 */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

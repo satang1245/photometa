@@ -44,6 +44,7 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isImageTransitioning, setIsImageTransitioning] = useState(false);
 
   // IndexedDB 훅
   const {
@@ -59,6 +60,9 @@ function App() {
 
   // 저장 디바운스를 위한 타이머 ref
   const saveTimerRef = useRef(null);
+  
+  // 이미지 프리뷰 영역 ref (애니메이션용)
+  const previewRef = useRef(null);
 
   const selectedImage = images.find(img => img.id === selectedImageId) || images[currentIndex] || null;
 
@@ -67,13 +71,9 @@ function App() {
     const restoreData = async () => {
       if (!isDBReady || isInitialized) return;
       
-      console.log('[App] 데이터 복원 시작, isDBReady:', isDBReady);
-      
       try {
         // 저장된 이미지 불러오기
         const savedImages = await loadAllImages();
-        
-        console.log('[App] 불러온 이미지 개수:', savedImages.length);
         
         if (savedImages.length > 0) {
           const sortedImages = sortImagesByTime(savedImages);
@@ -103,13 +103,9 @@ function App() {
           if (savedBoardViewState) {
             setBoardViewState(savedBoardViewState);
           }
-          
-          console.log('[App] 데이터 복원 완료');
-        } else {
-          console.log('[App] 저장된 이미지 없음');
         }
-      } catch (error) {
-        console.error('데이터 복원 오류:', error);
+      } catch {
+        // 데이터 복원 오류 무시
       } finally {
         setIsInitialized(true);
       }
@@ -129,7 +125,6 @@ function App() {
     
     // 1초 후에 저장 (디바운스)
     saveTimerRef.current = setTimeout(async () => {
-      console.log('[App] 이미지 저장 시작, 개수:', images.length);
       await saveAllImages(images);
     }, 1000);
     
@@ -208,8 +203,7 @@ function App() {
         });
         
         setUploadProgress({ current: i + 1, total: fileArray.length });
-      } catch (error) {
-        console.error('이미지 처리 중 오류:', error);
+      } catch {
         setUploadProgress({ current: i + 1, total: fileArray.length });
       }
     }
@@ -240,8 +234,7 @@ function App() {
           );
           return sortImagesByTime(updated);
         });
-      } catch (error) {
-        console.error('메타데이터를 읽는 중 오류가 발생했습니다:', error);
+      } catch {
         setImages(prev => prev.map(img => 
           img.id === imageData.id 
             ? { ...img, loading: false }
@@ -449,7 +442,7 @@ function App() {
         alert('GPS 정보가 있는 사진이 없습니다.');
         return;
       }
-      resetCarMarker();
+      // 시작 시에는 마커 리셋하지 않음 (깜빡임 방지)
       // autoZoomEnabled는 사용자가 설정한 값 유지 (자동으로 true로 설정하지 않음)
       setIsRoutePlaying(true);
       setCurrentRouteIndex(0);
@@ -671,17 +664,19 @@ function App() {
         )}
       </header>
 
-      {/* 왼쪽 사이드바 (메타데이터) - 데스크톱 */}
-      <div className="hidden md:block">
-        <MetadataSidebar
-          images={images}
-          currentIndex={currentIndex}
-          selectedImage={selectedImage}
-          formattedMetadata={formattedMetadata}
-          selectedImageId={selectedImageId}
-          onNavigateImage={navigateImage}
-        />
-      </div>
+      {/* 왼쪽 사이드바 (메타데이터) - 데스크톱, 지도 모드에서는 숨김 */}
+      {!isMapMode && (
+        <div className="hidden md:block">
+          <MetadataSidebar
+            images={images}
+            currentIndex={currentIndex}
+            selectedImage={selectedImage}
+            formattedMetadata={formattedMetadata}
+            selectedImageId={selectedImageId}
+            onNavigateImage={navigateImage}
+          />
+        </div>
+      )}
 
       {/* 모바일 사이드바 오버레이 */}
       {isMobileSidebarOpen && (
@@ -711,7 +706,7 @@ function App() {
 
       {/* 메인 콘텐츠 영역 */}
       <main 
-        className="flex-1 ml-0 md:ml-64 pt-14 md:pt-16 overflow-auto"
+        className={`flex-1 pt-14 md:pt-16 overflow-auto ${isMapMode ? 'ml-0' : 'ml-0 md:ml-64'}`}
         onDragEnter={handleDragEnter}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -742,9 +737,10 @@ function App() {
             autoZoomEnabled={autoZoomEnabled}
             onAutoZoomToggle={() => setAutoZoomEnabled(prev => !prev)}
             onAutoZoomDisabled={() => setAutoZoomEnabled(false)}
+            onRouteIndexChange={(index) => setCurrentRouteIndex(index)}
           />
         ) : (
-          <div className={`p-4 md:p-8 min-h-full relative ${isDragging ? 'bg-blue-500/5' : ''}`}>
+          <div className={`flex flex-col h-full relative ${isDragging ? 'bg-blue-500/5' : ''}`}>
             {/* 드래그 오버 시 표시되는 오버레이 */}
             {isDragging && (
               <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center pointer-events-none">
@@ -754,13 +750,29 @@ function App() {
                 </div>
               </div>
             )}
-            <ThumbnailGrid
-              images={images}
-              selectedImageId={selectedImageId}
-              onThumbnailClick={handleThumbnailClick}
-              onRemoveImage={handleRemoveImage}
-            />
-            <ImagePreview selectedImage={selectedImage} onImageClick={handlePreviewClick} />
+            
+            {/* 타임라인 영역 (상단 고정) */}
+            <div className="flex-shrink-0 py-4 md:py-6 border-b border-gray-800/50 bg-black/30">
+              <ThumbnailGrid
+                images={images}
+                selectedImageId={selectedImageId}
+                onThumbnailClick={handleThumbnailClick}
+                onRemoveImage={handleRemoveImage}
+                previewRef={previewRef}
+                onTransitionStart={() => setIsImageTransitioning(true)}
+                onTransitionEnd={() => setIsImageTransitioning(false)}
+              />
+            </div>
+            
+            {/* 미리보기 영역 (나머지 공간) */}
+            <div className="flex-1 p-4 md:p-8 overflow-auto">
+              <ImagePreview 
+                ref={previewRef} 
+                selectedImage={selectedImage} 
+                onImageClick={handlePreviewClick}
+                isTransitioning={isImageTransitioning}
+              />
+            </div>
           </div>
         )}
       </main>

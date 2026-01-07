@@ -506,6 +506,49 @@ function App() {
     setSelectedImageId(images[newIndex].id);
   };
 
+  // 키보드 방향키로 이미지 이동
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 지도 모드이거나 이미지가 없으면 무시
+      if (isMapMode || images.length === 0) return;
+      
+      // 입력 필드에 포커스가 있으면 무시 (사용자가 텍스트 입력 중일 수 있음)
+      const activeElement = document.activeElement;
+      if (
+        activeElement &&
+        (activeElement.tagName === 'INPUT' ||
+         activeElement.tagName === 'TEXTAREA' ||
+         (activeElement as HTMLElement).isContentEditable)
+      ) {
+        return;
+      }
+
+      // 방향키 처리
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        // 이전 이미지로 이동
+        if (images.length > 0) {
+          const newIndex = (currentIndex - 1 + images.length) % images.length;
+          setCurrentIndex(newIndex);
+          setSelectedImageId(images[newIndex].id);
+        }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        // 다음 이미지로 이동
+        if (images.length > 0) {
+          const newIndex = (currentIndex + 1) % images.length;
+          setCurrentIndex(newIndex);
+          setSelectedImageId(images[newIndex].id);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isMapMode, images, currentIndex]);
+
   const formatMetadata = (metadata: any) => {
     const formatted: any = {};
     
@@ -1168,12 +1211,15 @@ function App() {
               {images.map((image, index) => (
                 <div
                   key={image.id}
-                  className={`relative group cursor-pointer transition-all ${
+                  className={`relative group cursor-pointer ${
                     selectedImageId === image.id ? 'ring-2 ring-white ring-offset-2 ring-offset-black' : ''
                   }`}
                   onClick={() => handleThumbnailClick(image.id, index)}
                 >
-                  <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-700 hover:border-gray-500 transition-colors">
+                  <div 
+                    className="overflow-hidden border-2 border-gray-700 hover:border-gray-500"
+                    style={{ width: '36px', height: '36px' }}
+                  >
                     <img 
                       src={image.thumbnailUrl} 
                       alt={`Thumbnail ${index + 1}`}

@@ -1,5 +1,38 @@
-// 역지오코딩 캐시 (메모리 캐시)
-const geocodeCache = new Map();
+// 역지오코딩 캐시 키
+const GEOCODE_CACHE_KEY = 'photo-metadata-geocode-cache';
+
+// localStorage에서 캐시 로드
+const loadCacheFromStorage = () => {
+  try {
+    const cached = localStorage.getItem(GEOCODE_CACHE_KEY);
+    if (cached) {
+      return new Map(JSON.parse(cached));
+    }
+  } catch {
+    // 캐시 로드 실패 시 무시
+  }
+  return new Map();
+};
+
+// localStorage에 캐시 저장
+const saveCacheToStorage = (cache) => {
+  try {
+    // 캐시 크기 제한 (최대 500개)
+    const entries = Array.from(cache.entries());
+    if (entries.length > 500) {
+      // 오래된 항목 제거 (앞에서부터)
+      const trimmed = entries.slice(-500);
+      cache.clear();
+      trimmed.forEach(([key, value]) => cache.set(key, value));
+    }
+    localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(Array.from(cache.entries())));
+  } catch {
+    // 저장 실패 시 무시 (localStorage 용량 초과 등)
+  }
+};
+
+// 역지오코딩 캐시 (메모리 + localStorage)
+const geocodeCache = loadCacheFromStorage();
 
 /**
  * 위도/경도를 주소로 변환 (역지오코딩)
@@ -65,13 +98,32 @@ export const reverseGeocode = async (lat, lon) => {
       address = data.display_name;
     }
     
-    // 캐시에 저장
+    // 캐시에 저장 (메모리 + localStorage)
     geocodeCache.set(cacheKey, address);
+    saveCacheToStorage(geocodeCache);
     
     return address;
-  } catch (error) {
-    console.error('역지오코딩 오류:', error);
+  } catch {
     return null;
   }
 };
 
+/**
+ * 캐시된 주소 가져오기 (API 호출 없이)
+ */
+export const getCachedAddress = (lat, lon) => {
+  const cacheKey = `${lat.toFixed(6)},${lon.toFixed(6)}`;
+  return geocodeCache.get(cacheKey) || null;
+};
+
+/**
+ * 캐시 초기화
+ */
+export const clearGeocodeCache = () => {
+  geocodeCache.clear();
+  try {
+    localStorage.removeItem(GEOCODE_CACHE_KEY);
+  } catch {
+    // 무시
+  }
+};
